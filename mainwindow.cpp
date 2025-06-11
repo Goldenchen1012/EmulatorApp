@@ -1,0 +1,372 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include <QSerialPort>
+#include <QSerialPortInfo>
+#include <QMessageBox>
+#include <QDebug>
+#include <QWidget>
+#include <QVBoxLayout>
+#include <QPushButton>
+#include <QPlainTextEdit>
+#include <QString>
+#include <QByteArray>
+#include <QTextStream>
+#include <cstdint>
+#include <cmath>
+#include "LibCrc15Crc10TableCalc.h"
+
+#define EMULATOR_APP_NAME_STR         QString("EmulatorApp")
+#define EMULATOR_APP_VERSION_STR      QString("V1.0")
+
+#define APP_CMD_MASK                               (0x8000)
+#define APP_CMD_AFE_NUM                            (0x8001)
+#define APP_CMD_AFE_V_INC                          (0x8010)
+
+#define APP_AFECASE_NUM_MAX                        (30)
+
+#define APP_EMU_UART_HAED1                         (0x55)
+#define APP_EMU_UART_HAED2                         (0xAA)
+
+#define APP_EMU_A_HEAD1                             (0)
+#define APP_EMU_A_HEAD2                             (1)
+#define APP_EMU_A_CMD1                              (2)
+#define APP_EMU_A_CMD2                              (3)
+#define APP_EMU_A_CMD3                              (4)
+#define APP_EMU_A_CMD4                              (5)
+#define APP_EMU_A_AFEINDEX                          (6)
+#define APP_EMU_A_DATA                              (7)
+#define APP_EMU_A_CHECKSUM                          (15)
+
+#define APP_EMU_UART_DATA_LEN                       (8)
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+
+    setWindowTitle(EMULATOR_APP_NAME_STR + " " + EMULATOR_APP_VERSION_STR);
+
+    // 初始化通訊用 serialPort
+    serial = new QSerialPort(this);
+
+    // 預設CMD1-CMD4選項
+    ui->comboBoxCmd->addItem("RDCVA", QVariant::fromValue(QByteArray::fromHex("00000004")));
+    ui->comboBoxCmd->addItem("RDCVB", QVariant::fromValue(QByteArray::fromHex("00000006")));
+    ui->comboBoxCmd->addItem("RDCVC", QVariant::fromValue(QByteArray::fromHex("00000008")));
+    ui->comboBoxCmd->addItem("RDCVD", QVariant::fromValue(QByteArray::fromHex("0000000A")));
+    ui->comboBoxCmd->addItem("RDCVE", QVariant::fromValue(QByteArray::fromHex("00000009")));
+    ui->comboBoxCmd->addItem("RDCVF", QVariant::fromValue(QByteArray::fromHex("0000000B")));
+
+    for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
+    {
+        ui->comboBoxAfeIndex->addItem(QString("AFE%1").arg(i), i - 1);
+        ui->comboBoxTotalAFE->addItem(QString::number(i), i); // 新增 AFE TOTAL 組數
+    }
+
+    ui->comboBoxPEC->addItem("Correct PEC", true);
+    ui->comboBoxPEC->addItem("Incorrect PEC", false);
+
+    // 初始化 comboBoxCmdType
+    ui->comboBoxCmdType->addItem("RDCVA", 0x01);
+    ui->comboBoxCmdType->addItem("RDCVB", 0x02);
+    ui->comboBoxCmdType->addItem("RDCVC", 0x03);
+    ui->comboBoxCmdType->addItem("RDCVD", 0x04);
+    ui->comboBoxCmdType->addItem("RDCVE", 0x05);
+    ui->comboBoxCmdType->addItem("RDCVF", 0x06);
+
+    // 初始化 comboBoxStartIndex 和 comboBoxEndIndex
+    for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
+    {
+        ui->comboBoxStartIndex->addItem(QString("AFE%1").arg(i), i - 1);
+        ui->comboBoxEndIndex->addItem(QString("AFE%1").arg(i), i - 1);
+    }
+
+    connect(ui->btnScan, &QPushButton::clicked, this, &MainWindow::onScanPorts);
+    connect(ui->btnOpen, &QPushButton::clicked, this, &MainWindow::onOpenPort);
+    connect(ui->btnSend, &QPushButton::clicked, this, &MainWindow::onSendPacket);
+    connect(ui->btnSendTotalAFE, &QPushButton::clicked, this, &MainWindow::onSendTotalAFE);
+    connect(ui->btnSendRangeVoltage, &QPushButton::clicked, this, &MainWindow::onSendRangeVoltage);
+    connect(serial, &QSerialPort::readyRead, this, &MainWindow::onSerialReceived);
+
+    // 清除TX按鈕
+    connect(ui->btnClearTx, &QPushButton::clicked, this, [=]() {
+        ui->textEditTx->clear();
+    });
+
+    // 清除RX按鈕
+    connect(ui->btnClearRx, &QPushButton::clicked, this, [=]() {
+        ui->textEditRx->clear();
+    });
+}
+
+MainWindow::~MainWindow()
+{
+    if (serial->isOpen())
+        serial->close();
+    delete ui;
+}
+
+void MainWindow::onScanPorts()
+{
+    ui->comboBoxPort->clear();
+    const auto infos = QSerialPortInfo::availablePorts();
+    for (const QSerialPortInfo &info : infos)
+        ui->comboBoxPort->addItem(info.portName());
+}
+
+void MainWindow::onOpenPort()
+{
+    if (serial->isOpen())
+        serial->close();
+
+    QString portName = ui->comboBoxPort->currentText();
+    if (portName.isEmpty()) {
+        QMessageBox::warning(this, "Warning", "Please select a COM port");
+        return;
+    }
+
+    serial->setPortName(portName);
+    serial->setBaudRate(QSerialPort::Baud115200);
+    serial->setDataBits(QSerialPort::Data8);
+    serial->setParity(QSerialPort::NoParity);
+    serial->setStopBits(QSerialPort::OneStop);
+    serial->setFlowControl(QSerialPort::NoFlowControl);
+
+    if (!serial->open(QIODevice::ReadWrite)) {
+        QMessageBox::critical(this, "Error", "Failed to open COM port");
+    } else {
+        QMessageBox::information(this, "Success", "COM port opened successfully");
+    }
+}
+
+static bool parseHexIfNeeded(const QString& input, uint16_t& out)
+{
+    if (input.startsWith("0x", Qt::CaseInsensitive)) {
+        bool ok = false;
+        out = input.toUShort(&ok, 16);
+        return ok;
+    }
+    return false;
+}
+
+static void voltage_to_bytes(double voltage_uV, uint8_t* out_bytes) {
+    uint16_t raw = static_cast<uint16_t>((voltage_uV - 1500000.0) / 150.0);
+    out_bytes[0] = static_cast<uint8_t>(raw & 0xFF);
+    out_bytes[1] = static_cast<uint8_t>((raw >> 8) & 0xFF);
+}
+
+void MainWindow::onSendPacket()
+{
+    if (ui->lineEditV1->text().isEmpty() || ui->lineEditV2->text().isEmpty() || ui->lineEditV3->text().isEmpty()) {
+        QMessageBox::warning(this, "Input Error", "Please enter all voltage values (V1, V2, V3).");
+        return;
+    }
+
+    if (!serial->isOpen()) {
+        QMessageBox::warning(this, "Error", "COM port not open");
+        return;
+    }
+
+    QByteArray packet(16, 0);
+    packet[0] = APP_EMU_UART_HAED1;
+    packet[1] = APP_EMU_UART_HAED2;
+
+    QByteArray cmdBytes = ui->comboBoxCmd->currentData().toByteArray();
+    packet.replace(2, 4, cmdBytes);
+
+    uint8_t afe_index = static_cast<uint8_t>(ui->comboBoxAfeIndex->currentData().toUInt());
+    packet[6] = afe_index;
+
+    uint8_t data[7];    
+    uint16_t value = 0;
+
+    for (int i = 0; i < 7; ++i)
+    {
+        data[i] = 0;
+    }
+
+    // V1
+    if (parseHexIfNeeded(ui->lineEditV1->text(), value)) {
+        data[0] = value & 0xFF;
+        data[1] = (value >> 8) & 0xFF;
+    } else {
+        double v = ui->lineEditV1->text().toDouble() * 1000000;
+        voltage_to_bytes(v, &data[0]);
+    }
+
+    // V2
+    if (parseHexIfNeeded(ui->lineEditV2->text(), value)) {
+        data[2] = value & 0xFF;
+        data[3] = (value >> 8) & 0xFF;
+    } else {
+        double v = ui->lineEditV2->text().toDouble() * 1000000;
+        voltage_to_bytes(v, &data[2]);
+    }
+
+    // V3
+    if (parseHexIfNeeded(ui->lineEditV3->text(), value)) {
+        data[4] = value & 0xFF;
+        data[5] = (value >> 8) & 0xFF;
+    } else {
+        double v = ui->lineEditV3->text().toDouble() * 1000000;
+        voltage_to_bytes(v, &data[4]);
+    }
+
+    for (int i = 0; i < 6; ++i)
+        packet[7 + i] = data[i];
+
+    //CRC 10(DPEC) Calc
+    bool correctPEC = ui->comboBoxPEC->currentData().toBool();
+    uint16_t crc = pec10_calc(true, 6, data);
+    uint8_t dpec[2] = { static_cast<uint8_t>(crc >> 8), static_cast<uint8_t>(crc & 0xFF) };
+    if (!correctPEC)
+        dpec[1] ^= 0xFF;
+
+    packet[13] = dpec[0];    //Data 7
+    packet[14] = dpec[1];    //Data 8
+
+    uint8_t checksum = 0;
+    for (int i = 0; i < 15; ++i)
+        checksum += static_cast<uint8_t>(packet[i]);
+    packet[15] = checksum;
+
+    serial->write(packet);
+
+    QString hexStr;
+    for (int i = 0; i < 16; ++i)
+        hexStr += QString("%1 ").arg(static_cast<uint8_t>(packet[i]), 2, 16, QChar('0')).toUpper();
+
+    ui->textEditTx->append("TX: " + hexStr.trimmed());
+    qDebug() << "Sent Packet: " << packet.toHex(' ').toUpper();
+}
+
+void MainWindow::onSendTotalAFE()
+{
+    uint16_t u16Cmd;
+
+    u16Cmd = APP_CMD_AFE_NUM;
+
+    if (!serial->isOpen()) {
+        QMessageBox::warning(this, "Error", "COM port not open");
+        return;
+    }
+
+    QByteArray packet(16, 0);
+    packet[0] = APP_EMU_UART_HAED1;
+    packet[1] = APP_EMU_UART_HAED2;
+
+    packet[2] = 0x00;
+    packet[3] = 0x00;
+    packet[4] = (u16Cmd >> 8);
+    packet[5] = (u16Cmd & 0xFF);
+
+    packet[6] = 0x00; // AFE index 可設為0
+
+    uint8_t afe_total = static_cast<uint8_t>(ui->comboBoxTotalAFE->currentData().toUInt());
+    packet[7] = afe_total;
+
+    // Data2 = 是否初始化（0x01 表示需要初始化）
+    if(ui->checkBoxInitDevice->isChecked() == true)
+    {
+        packet[8] = 0x01;
+    }else
+    {
+        packet[8] = 0x00;
+    }
+
+    for (int i = 9; i < 15; ++i)
+        packet[i] = 0x00;
+
+    uint8_t checksum = 0;
+    for (int i = 0; i < 15; ++i)
+        checksum += static_cast<uint8_t>(packet[i]);
+
+    packet[15] = checksum;
+
+    serial->write(packet);
+
+    QString hexStr;
+    for (int i = 0; i < 16; ++i)
+        hexStr += QString("%1 ").arg(static_cast<uint8_t>(packet[i]), 2, 16, QChar('0')).toUpper();
+
+    ui->textEditTx->append("TX: " + hexStr.trimmed());
+    qDebug() << "Sent AFE Total Packet: " << packet.toHex(' ').toUpper();
+}
+
+void MainWindow::onSendRangeVoltage()
+{
+    uint16_t u16Cmd;
+    u16Cmd = APP_CMD_AFE_V_INC;
+
+    if (ui->lineEditStartVolt->text().isEmpty() || ui->lineEditStepVolt->text().isEmpty()) {
+        QMessageBox::warning(this, "Input Error", "Please enter both Start Voltage and Step Voltage.");
+        return;
+    }
+
+    if (!serial->isOpen()) {
+        QMessageBox::warning(this, "Error", "COM port not open");
+        return;
+    }
+
+    QByteArray packet(16, 0);
+    packet[0] = APP_EMU_UART_HAED1;
+    packet[1] = APP_EMU_UART_HAED2;
+    packet[2] = 0x00;
+    packet[3] = 0x00;
+    packet[4] = (u16Cmd>>8);
+    packet[5] = (u16Cmd & 0xFF);
+    packet[6] = 0x00; // AFE index 無使用
+
+    // Data1 = CMD選項
+    packet[7] = static_cast<uint8_t>(ui->comboBoxCmdType->currentIndex() + 1); // RDCVA = 1
+
+    // Data2 = 起始 AFE Index
+    packet[8] = static_cast<uint8_t>(ui->comboBoxStartIndex->currentData().toUInt());
+
+    // Data3 = 結束 AFE Index
+    packet[9] = static_cast<uint8_t>(ui->comboBoxEndIndex->currentData().toUInt());
+
+    // Data4~5 = 開始電壓
+    double startV = ui->lineEditStartVolt->text().toDouble() * 1000000.0;
+    uint8_t bytesV[2];
+    voltage_to_bytes(startV, bytesV);
+    packet[10] = bytesV[1]; // Big Endian
+    packet[11] = bytesV[0];
+
+    // Data6~7 = 遞增電壓 (mV)，直接轉成 uint16_t，Big Endian
+    uint16_t stepMv = static_cast<uint16_t>(ui->lineEditStepVolt->text().toUInt());
+    packet[12] = (stepMv >> 8) & 0xFF;
+    packet[13] = stepMv & 0xFF;
+
+    packet[14] = 0x00; // 保留位
+
+    // Checksum B0~B14
+    uint8_t checksum = 0;
+    for (int i = 0; i < 15; ++i)
+        checksum += static_cast<uint8_t>(packet[i]);
+
+    packet[15] = checksum;
+
+    serial->write(packet);
+
+    QString hexStr;
+    for (int i = 0; i < 16; ++i)
+        hexStr += QString("%1 ").arg(static_cast<uint8_t>(packet[i]), 2, 16, QChar('0')).toUpper();
+
+    ui->textEditTx->append("TX: " + hexStr.trimmed());
+    qDebug() << "SendRangeVoltage: " << packet.toHex(' ').toUpper();
+}
+
+void MainWindow::onSerialReceived()
+{
+    QByteArray data = serial->readAll();
+    if (data.size() > 0) {
+        QString hexStr;
+        for (int i = 0; i < data.size(); ++i)
+            hexStr += QString("%1 ").arg(static_cast<uint8_t>(data[i]), 2, 16, QChar('0')).toUpper();
+
+        ui->textEditRx->append("RX: " + hexStr.trimmed());
+        qDebug() << "Received: " << data.toHex(' ').toUpper();
+    }
+}
