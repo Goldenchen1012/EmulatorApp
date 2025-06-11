@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QSerialPort>
+#include <QLineEdit>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -23,9 +24,12 @@ private slots:
     void onSendTotalAFE();     // 傳送AFE總數設定封包
     void onSendRangeVoltage(); // 傳送設定範圍電壓封包
     void onSerialReceived();   // 接收資料事件處理
+    void onCalcCrc15();
+    void onCalcCrc10();
 
 private:
     Ui::MainWindow *ui;
     QSerialPort *serial;     // 串口物件
+    QLineEdit* crc10Edits[7];  // 對應 lineEditCrc10_0 ~ _6
 };
 #endif // MAINWINDOW_H

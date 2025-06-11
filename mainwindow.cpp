@@ -39,6 +39,8 @@
 
 #define APP_EMU_UART_DATA_LEN                       (8)
 
+
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -98,6 +100,22 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->btnClearRx, &QPushButton::clicked, this, [=]() {
         ui->textEditRx->clear();
     });
+
+    crc10Edits[0] = ui->lineEditCrc10_0;
+    crc10Edits[1] = ui->lineEditCrc10_1;
+    crc10Edits[2] = ui->lineEditCrc10_2;
+    crc10Edits[3] = ui->lineEditCrc10_3;
+    crc10Edits[4] = ui->lineEditCrc10_4;
+    crc10Edits[5] = ui->lineEditCrc10_5;
+    crc10Edits[6] = ui->lineEditCrc10_6;
+
+    connect(ui->btnCalcCrc15, &QPushButton::clicked, this, &MainWindow::onCalcCrc15);
+    connect(ui->btnCalcCrc10, &QPushButton::clicked, this, &MainWindow::onCalcCrc10);
+
+    connect(ui->btnClearCrcResult, &QPushButton::clicked, this, [=]() {
+        ui->textEditCrcResult->clear();
+    });
+
 }
 
 MainWindow::~MainWindow()
@@ -369,4 +387,53 @@ void MainWindow::onSerialReceived()
         ui->textEditRx->append("RX: " + hexStr.trimmed());
         qDebug() << "Received: " << data.toHex(' ').toUpper();
     }
+}
+
+void MainWindow::onCalcCrc15()
+{
+    uint8_t u8Data[4] = {0};
+    bool ok1, ok2;
+    uint16_t val1 = ui->lineEditCrc15Data1->text().toUShort(&ok1, 16);
+    uint16_t val2 = ui->lineEditCrc15Data2->text().toUShort(&ok2, 16);
+
+    if (!ok1 || !ok2) {
+        QMessageBox::warning(this, "Input Error", "Invalid HEX input for CRC15.");
+        return;
+    }
+
+    u8Data[2] = (val1 & 0xFF);
+    u8Data[3] = (val2 & 0xFF);
+
+    uint16_t u16Result = Pec15_Calc(2, &u8Data[2]);
+
+    QString resultStr = QString("CRC15 = 0x%1 (DATA: %2 %3)")
+                            .arg(u16Result, 4, 16, QChar('0')).toUpper()
+                            .arg(QString("%1").arg(u8Data[2], 2, 16, QChar('0')).toUpper())
+                            .arg(QString("%1").arg(u8Data[3], 2, 16, QChar('0')).toUpper());
+
+    ui->textEditCrcResult->append(resultStr);
+}
+
+void MainWindow::onCalcCrc10()
+{
+    uint8_t u8Data2[7] = {0};
+    bool ok = true;
+    QString dataStr;
+    for (int i = 0; i < 7; ++i) {
+        QString text = crc10Edits[i]->text();
+        bool thisOk = false;
+        u8Data2[i] = static_cast<uint8_t>(text.toUInt(&thisOk, 16));
+        ok &= thisOk;
+        dataStr += QString("%1 ").arg(u8Data2[i], 2, 16, QChar('0')).toUpper();
+    }
+    if (!ok) {
+        QMessageBox::warning(this, "Input Error", "Invalid HEX input for CRC10.");
+        return;
+    }
+
+    uint16_t u16Result = pec10_calc(true, 6, &u8Data2[0]);
+    QString resultStr = QString("CRC10 = 0x%1 (DATA: %2)")
+                            .arg(u16Result, 4, 16, QChar('0')).toUpper()
+                            .arg(dataStr.trimmed());
+    ui->textEditCrcResult->append(resultStr);
 }
