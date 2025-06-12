@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QSerialPort>
 #include <QLineEdit>
+#include <QTimer>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -29,7 +30,9 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
-    QSerialPort *serial;     // 串口物件
+    QSerialPort *serial;       // 串口物件
     QLineEdit* crc10Edits[7];  // 對應 lineEditCrc10_0 ~ _6
+    QByteArray serialBuffer;   // Buffer 用來暫存串口接收資料
+    QTimer *rxDelayTimer;      // 延遲顯示用的 Timer
 };
 #endif // MAINWINDOW_H

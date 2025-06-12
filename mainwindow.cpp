@@ -39,7 +39,9 @@
 
 #define APP_EMU_UART_DATA_LEN                       (8)
 
+#define APP_EMU_UART_PACKET_LEN                     (16)
 
+#define APP_EMU_REMAIN_DATA_DELAY                   (100)   //ms
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -116,6 +118,26 @@ MainWindow::MainWindow(QWidget *parent)
         ui->textEditCrcResult->clear();
     });
 
+
+    // 加入這段到 MainWindow 建構子中
+    //---------------------------------------------
+    serialBuffer.clear();
+    rxDelayTimer = new QTimer(this);
+    rxDelayTimer->setSingleShot(true);
+    rxDelayTimer->setInterval(APP_EMU_REMAIN_DATA_DELAY); //ms 延遲顯示
+
+    connect(rxDelayTimer, &QTimer::timeout, this, [=]() {
+        if (!serialBuffer.isEmpty()) {
+            QString hexStr;
+            for (int i = 0; i < serialBuffer.size(); ++i)
+                hexStr += QString("%1 ").arg(static_cast<uint8_t>(serialBuffer[i]), 2, 16, QChar('0')).toUpper();
+
+            ui->textEditRx->append("RX (Rem): " + hexStr.trimmed());
+            qDebug() << "Received (Rem): " << serialBuffer.toHex(' ').toUpper();
+            serialBuffer.clear();
+        }
+    });
+    //---------------------------------------------
 }
 
 MainWindow::~MainWindow()
@@ -378,8 +400,9 @@ void MainWindow::onSendRangeVoltage()
 
 void MainWindow::onSerialReceived()
 {
+#if 0
     QByteArray data = serial->readAll();
-    if (data.size() > 0) {
+    if (data.size() >= 0) {
         QString hexStr;
         for (int i = 0; i < data.size(); ++i)
             hexStr += QString("%1 ").arg(static_cast<uint8_t>(data[i]), 2, 16, QChar('0')).toUpper();
@@ -387,6 +410,28 @@ void MainWindow::onSerialReceived()
         ui->textEditRx->append("RX: " + hexStr.trimmed());
         qDebug() << "Received: " << data.toHex(' ').toUpper();
     }
+#endif
+
+    serialBuffer += serial->readAll();
+
+    // 顯示完整的 16 Bytes 封包
+    while (serialBuffer.size() >= APP_EMU_UART_PACKET_LEN) {
+        QByteArray onePacket = serialBuffer.left(APP_EMU_UART_PACKET_LEN);
+        serialBuffer.remove(0, APP_EMU_UART_PACKET_LEN);
+
+        QString hexStr;
+        for (int i = 0; i < onePacket.size(); ++i)
+            hexStr += QString("%1 ").arg(static_cast<uint8_t>(onePacket[i]), 2, 16, QChar('0')).toUpper();
+
+        ui->textEditRx->append("RX: " + hexStr.trimmed());
+        qDebug() << "Received (16B): " << onePacket.toHex(' ').toUpper();
+    }
+
+    // 若還有殘留不滿16 bytes，啟動延遲顯示定時器
+    if (!serialBuffer.isEmpty()) {
+        rxDelayTimer->start();  // 每次接收到資料就重新啟動倒數
+    }
+
 }
 
 void MainWindow::onCalcCrc15()
@@ -406,10 +451,12 @@ void MainWindow::onCalcCrc15()
 
     uint16_t u16Result = Pec15_Calc(2, &u8Data[2]);
 
-    QString resultStr = QString("CRC15 = 0x%1 (DATA: %2 %3)")
+    QString resultStr = QString("CRC15 = 0x%1 (DATA: 0x%2, 0x%3)")
                             .arg(u16Result, 4, 16, QChar('0')).toUpper()
                             .arg(QString("%1").arg(u8Data[2], 2, 16, QChar('0')).toUpper())
                             .arg(QString("%1").arg(u8Data[3], 2, 16, QChar('0')).toUpper());
+
+    resultStr.replace('X','x');
 
     ui->textEditCrcResult->append(resultStr);
 }
@@ -424,16 +471,22 @@ void MainWindow::onCalcCrc10()
         bool thisOk = false;
         u8Data2[i] = static_cast<uint8_t>(text.toUInt(&thisOk, 16));
         ok &= thisOk;
-        dataStr += QString("%1 ").arg(u8Data2[i], 2, 16, QChar('0')).toUpper();
+        dataStr += QString("0x%1, ").arg(u8Data2[i], 2, 16, QChar('0')).toUpper();
     }
     if (!ok) {
         QMessageBox::warning(this, "Input Error", "Invalid HEX input for CRC10.");
         return;
     }
 
+    dataStr = dataStr.trimmed();
+    dataStr = dataStr.left(dataStr.length()-1);
+
     uint16_t u16Result = pec10_calc(true, 6, &u8Data2[0]);
     QString resultStr = QString("CRC10 = 0x%1 (DATA: %2)")
                             .arg(u16Result, 4, 16, QChar('0')).toUpper()
                             .arg(dataStr.trimmed());
+
+    resultStr.replace('X','x');
+
     ui->textEditCrcResult->append(resultStr);
 }

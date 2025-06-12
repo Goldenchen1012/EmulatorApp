@@ -27,7 +27,7 @@
      <cursorShape>ArrowCursor</cursorShape>
     </property>
     <property name="currentIndex">
-     <number>2</number>
+     <number>1</number>
     </property>
     <widget class="QWidget" name="tab">
      <attribute name="title">
@@ -83,6 +83,11 @@
         <height>151</height>
        </rect>
       </property>
+      <property name="font">
+       <font>
+        <family>Courier New</family>
+       </font>
+      </property>
       <property name="inputMethodHints">
        <set>Qt::ImhNone</set>
       </property>
@@ -95,6 +100,11 @@
         <width>821</width>
         <height>151</height>
        </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Courier New</family>
+       </font>
       </property>
       <property name="inputMethodHints">
        <set>Qt::ImhNone</set>
@@ -578,6 +588,11 @@
         <width>591</width>
         <height>321</height>
        </rect>
+      </property>
+      <property name="font">
+       <font>
+        <family>Courier New</family>
+       </font>
       </property>
       <property name="inputMethodHints">
        <set>Qt::ImhNone</set>
