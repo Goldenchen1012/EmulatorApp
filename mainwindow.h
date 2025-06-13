@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QSerialPort>
+#include <QMouseEvent>
 #include <QLineEdit>
 #include <QTimer>
 
@@ -29,8 +30,9 @@ private slots:
     void onCalcCrc10();
 
     void on_comboBoxCmd_currentIndexChanged(int index);
-
     void on_comboBoxCmdType_currentIndexChanged(int index);
+
+    void onSendSpiMode();
 
 private:
     Ui::MainWindow *ui;
@@ -39,4 +41,25 @@ private:
     QByteArray serialBuffer;   // Buffer 用來暫存串口接收資料
     QTimer *rxDelayTimer;      // 延遲顯示用的 Timer
 };
+
+/*
+class HexLineEdit : public QLineEdit
+{
+    Q_OBJECT
+public:
+    using QLineEdit::QLineEdit;
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override {
+        if (event->button() == Qt::LeftButton) {
+            QString text = this->text();
+            if (!text.startsWith("0x", Qt::CaseInsensitive)) {
+                this->setText("0x" + text);
+            }
+        }
+        QLineEdit::mousePressEvent(event);
+    }
+};
+*/
+
 #endif // MAINWINDOW_H

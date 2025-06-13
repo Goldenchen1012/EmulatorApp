@@ -41,6 +41,7 @@
 #define APP_CMD_MASK                               (0x8000)
 #define APP_CMD_AFE_NUM                            (0x8001)
 #define APP_CMD_AFE_V_INC                          (0x8010)
+#define APP_CMD_AFE_SPIMODE                        (0x8020)
 
 #define APP_AFECASE_NUM_MAX                        (30)
 
@@ -176,6 +177,13 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     //---------------------------------------------
+
+    ui->comboBoxSpiMode->addItem("SPI MODE0", 0);
+    ui->comboBoxSpiMode->addItem("SPI MODE1", 1);
+    ui->comboBoxSpiMode->addItem("SPI MODE2", 2);
+    ui->comboBoxSpiMode->addItem("SPI MODE3", 3);
+
+    connect(ui->btnSetSpiMode, &QPushButton::clicked, this, &MainWindow::onSendSpiMode);
 }
 
 MainWindow::~MainWindow()
@@ -567,3 +575,41 @@ void MainWindow::on_comboBoxCmdType_currentIndexChanged(int index)
     }
 }
 
+void MainWindow::onSendSpiMode()
+{
+    if (!serial->isOpen()) {
+        QMessageBox::warning(this, "Error", "COM port not open");
+        return;
+    }
+
+    uint16_t u16Cmd = APP_CMD_AFE_SPIMODE;
+    uint8_t modeIndex = static_cast<uint8_t>(ui->comboBoxSpiMode->currentData().toUInt());
+
+    QByteArray packet(16, 0);
+    packet[0] = APP_EMU_UART_HAED1;
+    packet[1] = APP_EMU_UART_HAED2;
+    packet[2] = 0x00;  // Reserved
+    packet[3] = 0x00;  // Reserved
+    packet[4] = (u16Cmd >> 8) & 0xFF;
+    packet[5] = (u16Cmd & 0xFF);
+    packet[6] = 0x00;  // AFE Index (not used)
+    packet[7] = modeIndex;
+
+    // Fill rest as 0
+    for (int i = 8; i < 15; ++i)
+        packet[i] = 0x00;
+
+    uint8_t checksum = 0;
+    for (int i = 0; i < 15; ++i)
+        checksum += static_cast<uint8_t>(packet[i]);
+    packet[15] = checksum;
+
+    serial->write(packet);
+
+    QString hexStr;
+    for (int i = 0; i < 16; ++i)
+        hexStr += QString("%1 ").arg(static_cast<uint8_t>(packet[i]), 2, 16, QChar('0')).toUpper();
+
+    ui->textEditTx->append("TX: " + hexStr.trimmed());
+    qDebug() << "Sent SPI Mode Set Packet: " << packet.toHex(' ').toUpper();
+}
