@@ -62,6 +62,12 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxCmd->addItem("RDCVE", QVariant::fromValue(QByteArray::fromHex("00000009")));
     ui->comboBoxCmd->addItem("RDCVF", QVariant::fromValue(QByteArray::fromHex("0000000B")));
 
+    ui->comboBoxCmd->addItem("RDAUXA", QVariant::fromValue(QByteArray::fromHex("00000019")));
+    ui->comboBoxCmd->addItem("RDAUXB", QVariant::fromValue(QByteArray::fromHex("0000001A")));
+    ui->comboBoxCmd->addItem("RDAUXC", QVariant::fromValue(QByteArray::fromHex("0000001B")));
+    ui->comboBoxCmd->addItem("RDAUXD", QVariant::fromValue(QByteArray::fromHex("0000001F")));
+    ui->comboBoxCmd->addItem("RDAUXE", QVariant::fromValue(QByteArray::fromHex("00000036")));
+
     for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
     {
         ui->comboBoxAfeIndex->addItem(QString("AFE%1").arg(i), i - 1);
@@ -78,6 +84,12 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxCmdType->addItem("RDCVD", 0x04);
     ui->comboBoxCmdType->addItem("RDCVE", 0x05);
     ui->comboBoxCmdType->addItem("RDCVF", 0x06);
+
+    ui->comboBoxCmdType->addItem("RDAUXA", 0x11);
+    ui->comboBoxCmdType->addItem("RDAUXB", 0x12);
+    ui->comboBoxCmdType->addItem("RDAUXC", 0x13);
+    ui->comboBoxCmdType->addItem("RDAUXD", 0x14);
+    ui->comboBoxCmdType->addItem("RDAUXE", 0x15);
 
     // 初始化 comboBoxStartIndex 和 comboBoxEndIndex
     for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
@@ -359,7 +371,7 @@ void MainWindow::onSendRangeVoltage()
     packet[6] = 0x00; // AFE index 無使用
 
     // Data1 = CMD選項
-    packet[7] = static_cast<uint8_t>(ui->comboBoxCmdType->currentIndex() + 1); // RDCVA = 1
+    packet[7] = static_cast<uint8_t>(ui->comboBoxCmdType->currentData().toUInt());
 
     // Data2 = 起始 AFE Index
     packet[8] = static_cast<uint8_t>(ui->comboBoxStartIndex->currentData().toUInt());
