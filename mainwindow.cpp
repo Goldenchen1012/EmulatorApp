@@ -16,7 +16,7 @@
 #include "LibCrc15Crc10TableCalc.h"
 
 #define EMULATOR_APP_NAME_STR         QString("EmulatorApp")
-#define EMULATOR_APP_VERSION_STR      QString("V1.0")
+#define EMULATOR_APP_VERSION_STR      QString("V1.1")
 
 #define APP_CMD_MASK                               (0x8000)
 #define APP_CMD_AFE_NUM                            (0x8001)
@@ -68,6 +68,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxCmd->addItem("RDAUXD", QVariant::fromValue(QByteArray::fromHex("0000001F")));
     ui->comboBoxCmd->addItem("RDAUXE", QVariant::fromValue(QByteArray::fromHex("00000036")));
 
+    ui->comboBoxCmd->addItem("RDCFGA", QVariant::fromValue(QByteArray::fromHex("00000002")));
+    ui->comboBoxCmd->addItem("RDCFGB", QVariant::fromValue(QByteArray::fromHex("00000026")));
+
     for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
     {
         ui->comboBoxAfeIndex->addItem(QString("AFE%1").arg(i), i - 1);
@@ -90,6 +93,9 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxCmdType->addItem("RDAUXC", 0x13);
     ui->comboBoxCmdType->addItem("RDAUXD", 0x14);
     ui->comboBoxCmdType->addItem("RDAUXE", 0x15);
+
+    ui->comboBoxCmdType->addItem("RDCFGA", 0x20);
+    ui->comboBoxCmdType->addItem("RDCFGB", 0x21);
 
     // 初始化 comboBoxStartIndex 和 comboBoxEndIndex
     for (int i = 1; i <= APP_AFECASE_NUM_MAX; ++i)
