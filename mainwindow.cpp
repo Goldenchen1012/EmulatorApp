@@ -18,6 +18,26 @@
 #define EMULATOR_APP_NAME_STR         QString("EmulatorApp")
 #define EMULATOR_APP_VERSION_STR      QString("V1.1")
 
+#define SPI_CMD_RDCVA                              (0x0004)
+#define SPI_CMD_RDCVB                              (0x0006)
+#define SPI_CMD_RDCVC                              (0x0008)
+#define SPI_CMD_RDCVD                              (0x000A)
+#define SPI_CMD_RDCVE                              (0x0009)
+#define SPI_CMD_RDCVF                              (0x000B)
+
+#define SPI_CMD_RDAUXA                             (0x0019)
+#define SPI_CMD_RDAUXB                             (0x001A)
+#define SPI_CMD_RDAUXC                             (0x001B)
+#define SPI_CMD_RDAUXD                             (0x001F)
+#define SPI_CMD_RDAUXE                             (0x0036)
+
+#define SPI_CMD_WRCFGA                             (0x0001)
+#define SPI_CMD_RDCFGA                             (0x0002)
+
+#define SPI_CMD_WRCFGB                             (0x0024)
+#define SPI_CMD_RDCFGB                             (0x0026)
+
+
 #define APP_CMD_MASK                               (0x8000)
 #define APP_CMD_AFE_NUM                            (0x8001)
 #define APP_CMD_AFE_V_INC                          (0x8010)
@@ -357,7 +377,10 @@ void MainWindow::onSendRangeVoltage()
     uint16_t u16Cmd;
     u16Cmd = APP_CMD_AFE_V_INC;
 
-    if (ui->lineEditStartVolt->text().isEmpty() || ui->lineEditStepVolt->text().isEmpty()) {
+    QString strStart = ui->lineEditStartVolt->text();
+    QString strStep  = ui->lineEditStepVolt->text();
+
+    if (strStart.isEmpty() || strStep.isEmpty()) {
         QMessageBox::warning(this, "Input Error", "Please enter both Start Voltage and Step Voltage.");
         return;
     }
@@ -385,17 +408,39 @@ void MainWindow::onSendRangeVoltage()
     // Data3 = 結束 AFE Index
     packet[9] = static_cast<uint8_t>(ui->comboBoxEndIndex->currentData().toUInt());
 
-    // Data4~5 = 開始電壓
-    double startV = ui->lineEditStartVolt->text().toDouble() * 1000000.0;
-    uint8_t bytesV[2];
-    voltage_to_bytes(startV, bytesV);
-    packet[10] = bytesV[1]; // Big Endian
-    packet[11] = bytesV[0];
+    // Data4~5 = 開始電壓，判斷是否為 HEX 字串
+    uint16_t start_u16 = 0;
+    if (strStart.startsWith("0x", Qt::CaseInsensitive)) {
+        bool ok = false;
+        start_u16 = strStart.toUShort(&ok, 16);
+        if (!ok) {
+            QMessageBox::warning(this, "Input Error", "Invalid HEX input for Start Voltage.");
+            return;
+        }
+    } else {
+        double startV = strStart.toDouble() * 1000000.0; // V to μV
+        uint8_t bytesV[2];
+        voltage_to_bytes(startV, bytesV);
+        start_u16 = (bytesV[1] << 8) | bytesV[0]; // Big Endian 組合
+    }
+    packet[10] = (start_u16 >> 8) & 0xFF;
+    packet[11] = start_u16 & 0xFF;
 
-    // Data6~7 = 遞增電壓 (mV)，直接轉成 uint16_t，Big Endian
-    uint16_t stepMv = static_cast<uint16_t>(ui->lineEditStepVolt->text().toUInt());
-    packet[12] = (stepMv >> 8) & 0xFF;
-    packet[13] = stepMv & 0xFF;
+    // Data6~7 = 遞增電壓，判斷是否為 HEX 字串
+    uint16_t step_u16 = 0;
+    if (strStep.startsWith("0x", Qt::CaseInsensitive)) {
+        bool ok = false;
+        step_u16 = strStep.toUShort(&ok, 16);
+        if (!ok) {
+            QMessageBox::warning(this, "Input Error", "Invalid HEX input for Step Voltage.");
+            return;
+        }
+    } else {
+        step_u16 = static_cast<uint16_t>(strStep.toUInt());
+    }
+
+    packet[12] = (step_u16 >> 8) & 0xFF;
+    packet[13] = step_u16 & 0xFF;
 
     packet[14] = 0x00; // 保留位
 
@@ -418,18 +463,6 @@ void MainWindow::onSendRangeVoltage()
 
 void MainWindow::onSerialReceived()
 {
-#if 0
-    QByteArray data = serial->readAll();
-    if (data.size() >= 0) {
-        QString hexStr;
-        for (int i = 0; i < data.size(); ++i)
-            hexStr += QString("%1 ").arg(static_cast<uint8_t>(data[i]), 2, 16, QChar('0')).toUpper();
-
-        ui->textEditRx->append("RX: " + hexStr.trimmed());
-        qDebug() << "Received: " << data.toHex(' ').toUpper();
-    }
-#endif
-
     serialBuffer += serial->readAll();
 
     // 顯示完整的 16 Bytes 封包
@@ -508,3 +541,29 @@ void MainWindow::onCalcCrc10()
 
     ui->textEditCrcResult->append(resultStr);
 }
+
+void MainWindow::on_comboBoxCmd_currentIndexChanged(int index)
+{
+    if ((index == 11) || (index == 12)) {
+        ui->label_5->setText("Data2,1(Hex)");
+        ui->label_6->setText("Data4,3(Hex)");
+        ui->label_7->setText("Data6,5(Hex)");
+    } else {
+        ui->label_5->setText("AFE Data1(V)");
+        ui->label_6->setText("AFE Data2(V)");
+        ui->label_7->setText("AFE Data3(V)");
+    }
+}
+
+
+void MainWindow::on_comboBoxCmdType_currentIndexChanged(int index)
+{
+    if ((index == 11) || (index == 12)) {
+        ui->label_11->setText("Data Inital(Hex)");
+        ui->label_12->setText("Data Increment(Hex)");
+    } else {
+        ui->label_11->setText("Data Inital(V)");
+        ui->label_12->setText("Data Increment(mV)");
+    }
+}
+

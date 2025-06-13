@@ -28,6 +28,10 @@ private slots:
     void onCalcCrc15();
     void onCalcCrc10();
 
+    void on_comboBoxCmd_currentIndexChanged(int index);
+
+    void on_comboBoxCmdType_currentIndexChanged(int index);
+
 private:
     Ui::MainWindow *ui;
     QSerialPort *serial;       // 串口物件
