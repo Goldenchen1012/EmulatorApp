@@ -16,7 +16,7 @@
 #include "LibCrc15Crc10TableCalc.h"
 
 #define EMULATOR_APP_NAME_STR         QString("EmulatorApp")
-#define EMULATOR_APP_VERSION_STR      QString("V1.1")
+#define EMULATOR_APP_VERSION_STR      QString("V1.2")
 
 #define SPI_CMD_RDCVA                              (0x0004)
 #define SPI_CMD_RDCVB                              (0x0006)
@@ -184,6 +184,25 @@ MainWindow::MainWindow(QWidget *parent)
     ui->comboBoxSpiMode->addItem("SPI MODE3", 3);
 
     connect(ui->btnSetSpiMode, &QPushButton::clicked, this, &MainWindow::onSendSpiMode);
+
+
+    //Add Hex String Head event
+    //------------------------------------------
+    connect(ui->lineEditCrc15Data1, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc15Data2, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+
+    connect(ui->lineEditCrc10_0, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_1, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_2, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_3, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_4, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_5, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    connect(ui->lineEditCrc10_6, &QLineEdit::cursorPositionChanged, this, &MainWindow::onLineEditSetHexStringHead);
+    //------------------------------------------
+
+
+    ui->tabWidget->setCurrentIndex(0);
+
 }
 
 MainWindow::~MainWindow()
@@ -541,8 +560,8 @@ void MainWindow::onCalcCrc10()
     dataStr = dataStr.left(dataStr.length()-1);
 
     uint16_t u16Result = pec10_calc(true, 6, &u8Data2[0]);
-    QString resultStr = QString("CRC10 = 0x%1 (DATA: %2)")
-                            .arg(u16Result, 4, 16, QChar('0')).toUpper()
+    QString resultStr = QString("CRC10[including WR Cnt] = 0x%1 (DATA: %2)")
+                            .arg(u16Result | (u8Data2[6]<< 8), 4, 16, QChar('0')).toUpper()
                             .arg(dataStr.trimmed());
 
     resultStr.replace('X','x');
@@ -612,4 +631,16 @@ void MainWindow::onSendSpiMode()
 
     ui->textEditTx->append("TX: " + hexStr.trimmed());
     qDebug() << "Sent SPI Mode Set Packet: " << packet.toHex(' ').toUpper();
+}
+
+void MainWindow::onLineEditSetHexStringHead()
+{
+    QLineEdit* edit = qobject_cast<QLineEdit*>(sender());
+    if (!edit)
+        return;
+
+    QString text = edit->text();
+    if (!text.startsWith("0x", Qt::CaseInsensitive)) {
+        edit->setText("0x" + text);
+    }
 }

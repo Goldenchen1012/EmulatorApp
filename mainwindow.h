@@ -33,6 +33,7 @@ private slots:
     void on_comboBoxCmdType_currentIndexChanged(int index);
 
     void onSendSpiMode();
+    void onLineEditSetHexStringHead();
 
 private:
     Ui::MainWindow *ui;
